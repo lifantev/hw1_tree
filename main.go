@@ -25,26 +25,42 @@ func main() {
 }
 
 func dirTree(out *os.File, path string, printFiles bool) (err error) {
-	return dirInTree(out, path, printFiles, 0)
+	return dirInTree(out, path, "", printFiles)
 }
 
-func dirInTree(out *os.File, path string, printFiles bool, depth int) error {
+func dirInTree(out *os.File, path, indent string, printFiles bool) error {
 	de, err := os.ReadDir(path)
 	if err != nil {
 		return err
 	}
-	sortDirs(de)
-	for _, d := range de {
-		if d.IsDir() {
-			dirPrint(out, d.Name(), depth)
 
-			err := dirInTree(out, path+"/"+d.Name(), printFiles, depth+1)
+	var ln int
+	if !printFiles {
+		n := 0
+		for _, d := range de {
+			if d.IsDir() {
+				de[n] = d
+				n++
+			}
+		}
+		de = de[:n]
+		ln = n
+	} else {
+		ln = len(de)
+	}
+	sortDirs(de)
+
+	for i, d := range de {
+		if d.IsDir() {
+			dirPrint(out, indent, genPrefix(i, ln), d.Name())
+
+			err := dirInTree(out, path+"/"+d.Name(), genIndent(indent, i, ln), printFiles)
 			if err != nil {
 				return nil
 			}
 		} else {
 			if printFiles {
-				dirPrint(out, d.Name(), depth)
+				dirPrint(out, indent, genPrefix(i, ln), d.Name())
 			}
 		}
 	}
@@ -53,12 +69,14 @@ func dirInTree(out *os.File, path string, printFiles bool, depth int) error {
 
 const (
 	begin = iota
+	tab
 	mid
 	end
 )
 
 var syms = map[int]string{
 	begin: "├───",
+	tab: "	",
 	mid: "│	",
 	end: "└───",
 }
@@ -67,30 +85,25 @@ func sortDirs(dd []os.DirEntry) {
 	sort.Slice(dd, func(i, j int) bool { return dd[i].Name() < dd[j].Name() })
 }
 
-func dirPrint(out *os.File, name string, depth int) {
-	// if i == 0 {
-	// 	fmt.Fprintf(out, "%s%s/n", syms[begin], name)
-	// } else if i < len {
-	// 	fmt.Fprintf(out, "%s%s/n", syms[begin], name)
-	// }
-	for ; depth > 0; depth-- {
-		fmt.Fprintf(out, "\t")
-	}
-	fmt.Fprintf(out, "%s\n", name)
+func dirPrint(out *os.File, indent, prefix, name string) {
+	fmt.Fprintf(out, "%s%s%s\n", indent, prefix, name)
 }
 
-func genPrefix(prefix string, i, len int, isInLast bool) string {
-	if isInLast {
-		prefix += "\t"
+func genIndent(indent string, i, len int) string {
+	if i < len-1 {
+		indent += syms[mid]
 	} else {
-		prefix += syms[mid] + "\t"
+		indent += syms[tab]
 	}
-
-	if i < len {
-		prefix += syms[begin]
-	} else {
-		prefix += syms[end]
-	}
-
-	return prefix
+	return indent
 }
+
+func genPrefix(i, len int) string {
+	if i < len-1 {
+		return syms[begin]
+	} else {
+		return syms[end]
+	}
+}
+
+// todo:  suffix of file length
