@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	// "io"
+	"io"
 	"os"
 	// "path/filepath"
 	// "strings"
@@ -24,43 +24,37 @@ func main() {
 	}
 }
 
-func dirTree(out *os.File, path string, printFiles bool) (err error) {
+func dirTree(out io.Writer, path string, printFiles bool) (err error) {
 	return dirInTree(out, path, "", printFiles)
 }
 
-func dirInTree(out *os.File, path, indent string, printFiles bool) error {
+func dirInTree(out io.Writer, path, indent string, printFiles bool) error {
 	de, err := os.ReadDir(path)
 	if err != nil {
 		return err
 	}
 
 	var ln int
-	if !printFiles {
-		n := 0
-		for _, d := range de {
-			if d.IsDir() {
-				de[n] = d
-				n++
-			}
-		}
-		de = de[:n]
-		ln = n
-	} else {
-		ln = len(de)
-	}
+	de, ln = filterDirs(printFiles, de, ln)
 	sortDirs(de)
 
 	for i, d := range de {
-		if d.IsDir() {
-			dirPrint(out, indent, genPrefix(i, ln), d.Name())
+		isLast := i == (ln - 1)
+		relPath := path + "/" + d.Name()
+		s, err := getSuffix(relPath)
+		if err != nil {
+			return err
+		}
 
-			err := dirInTree(out, path+"/"+d.Name(), genIndent(indent, i, ln), printFiles)
+		if d.IsDir() {
+			dirPrint(out, indent, genPrefix(isLast), d.Name(), "")
+			err = dirInTree(out, relPath, genIndent(indent, isLast), printFiles)
 			if err != nil {
 				return nil
 			}
 		} else {
 			if printFiles {
-				dirPrint(out, indent, genPrefix(i, ln), d.Name())
+				dirPrint(out, indent, genPrefix(isLast), d.Name(), s)
 			}
 		}
 	}
@@ -81,16 +75,33 @@ var syms = map[int]string{
 	end: "└───",
 }
 
+func filterDirs(printFiles bool, de []os.DirEntry, ln int) ([]os.DirEntry, int) {
+	if !printFiles {
+		n := 0
+		for _, d := range de {
+			if d.IsDir() {
+				de[n] = d
+				n++
+			}
+		}
+		de = de[:n]
+		ln = n
+	} else {
+		ln = len(de)
+	}
+	return de, ln
+}
+
 func sortDirs(dd []os.DirEntry) {
 	sort.Slice(dd, func(i, j int) bool { return dd[i].Name() < dd[j].Name() })
 }
 
-func dirPrint(out *os.File, indent, prefix, name string) {
-	fmt.Fprintf(out, "%s%s%s\n", indent, prefix, name)
+func dirPrint(out io.Writer, indent, prefix, name, suffix string) {
+	fmt.Fprintf(out, "%s%s%s%s\n", indent, prefix, name, suffix)
 }
 
-func genIndent(indent string, i, len int) string {
-	if i < len-1 {
+func genIndent(indent string, isLast bool) string {
+	if !isLast {
 		indent += syms[mid]
 	} else {
 		indent += syms[tab]
@@ -98,12 +109,24 @@ func genIndent(indent string, i, len int) string {
 	return indent
 }
 
-func genPrefix(i, len int) string {
-	if i < len-1 {
+func genPrefix(isLast bool) string {
+	if !isLast {
 		return syms[begin]
 	} else {
 		return syms[end]
 	}
 }
 
-// todo:  suffix of file length
+func getSuffix(name string) (string, error) {
+	fi, err := os.Stat(name)
+	if err != nil {
+		return "", err
+	}
+
+	size := fi.Size()
+	if size > 0 {
+		return fmt.Sprintf(" (%db)", size), nil
+	} else {
+		return " (empty)", nil
+	}
+}
